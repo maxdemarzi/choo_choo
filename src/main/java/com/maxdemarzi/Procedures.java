@@ -1,15 +1,17 @@
 package com.maxdemarzi;
 
+import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import org.neo4j.graphalgo.*;
-import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.*;
 import org.neo4j.logging.Log;
 import org.neo4j.procedure.*;
 
 import java.util.ArrayList;
 import java.util.stream.Stream;
 
-import static com.maxdemarzi.schema.Properties.MILES;
+import static com.maxdemarzi.Heuristics.getCost;
+import static com.maxdemarzi.schema.Properties.*;
 
 public class Procedures {
 
@@ -23,28 +25,48 @@ public class Procedures {
     @Context
     public Log log;
 
-    private static final ValidPathExpander validPaths = new ValidPathExpander();
-    private static final DistanceEstimateEvaluator distanceHeuristic = new DistanceEstimateEvaluator();
+    private static GraphDatabaseService graph;
+
+    // Junctions don't tend to move, so we will cache their latitudes and longitudes.
+
+    static final LoadingCache<Node, Double> latitudes = Caffeine.newBuilder()
+            .maximumSize(1_000_000L)
+            .build(Procedures::getJunctionLatitude);
+
+    static final LoadingCache<Node, Double> longitudes = Caffeine.newBuilder()
+            .maximumSize(1_000_000L)
+            .build(Procedures::getJunctionLongitude);
+
+    private static Double getJunctionLatitude(Node node) {
+        return (double)node.getProperty(LATITUDE);
+    }
+
+    private static Double getJunctionLongitude(Node node) {
+        return (double)node.getProperty(LONGITUDE);
+    }
 
     @Procedure(name = "com.maxdemarzi.routes", mode = Mode.READ)
     @Description("CALL com.maxdemarzi.routes(Node from, Node to, Number limit)")
     public Stream<WeightedPathResult> routes(@Name("from") Node from, @Name("to") Node to, @Name("limit") Number limit) {
-        PathFinder<WeightedPath> aStar = GraphAlgoFactory.aStar(validPaths,
-                CommonEvaluators.doubleCostEvaluator(MILES), distanceHeuristic );
+        // Initialize graph for cache
+        if (graph == null) {
+            graph = this.db;
+        }
+
+        // Prevent going to any Junction more than 120% distance away from source to destination
+        double maxCost = getCost(from, to) * 1.2;
+        ValidPathExpander validPaths = new ValidPathExpander(maxCost, latitudes.get(to), longitudes.get(to));
+
+        PathFinder<WeightedPath> dijkstra = GraphAlgoFactory.dijkstra(validPaths,
+                CommonEvaluators.doubleCostEvaluator(MILES), limit.intValue() );
 
         ArrayList<WeightedPathResult> results = new ArrayList<>();
-        int count = 0;
-        WeightedPath single = aStar.findSinglePath(from, to);
-        results.add(new WeightedPathResult(single, single.weight()));
-
-//        for (WeightedPath path : aStar.findAllPaths(from, to)) {
-//            results.add(new WeightedPathResult(path, path.weight()));
-//            if(count++ >= limit.intValue() ) {
-//                break;
-//            }
-//        }
+        for(WeightedPath path : dijkstra.findAllPaths(from, to)) {
+            results.add(new WeightedPathResult(path, path.weight()));
+        }
 
         return results.stream();
     }
+
 
 }

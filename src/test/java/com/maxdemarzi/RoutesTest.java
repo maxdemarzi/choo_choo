@@ -21,7 +21,6 @@ public class RoutesTest {
         // In a try-block, to make sure we close the driver after the test
         try( Driver driver = GraphDatabase.driver( neo4j.boltURI() , Config.build().withoutEncryption().toConfig() ) )
         {
-
             // Given I've started Neo4j with the procedure
             //       which my 'neo4j' rule above does.
             Session session = driver.session();
@@ -31,7 +30,8 @@ public class RoutesTest {
                     parameters("limit", 2));
 
             // Then I should get what I expect
-            assertThat(result.next().get("weight").asDouble(), equalTo(14.0));
+            assertThat(result.next().get("weight").asDouble(), equalTo(12.0));
+            assertThat(result.next().get("weight").asDouble(), equalTo(13.0));
         }
     }
 

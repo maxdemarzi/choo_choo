@@ -22,34 +22,45 @@ Copy the rail_junctions.csv and rail_roads.csv files to your Neo4j /import direc
     RETURN COUNT(*);
     
     
-    // From Chicago to Milwaukee
+    // From Chicago to Milwaukee Shortest Number of Relationships
     MATCH (chicago:Junction {fra_node_id: "414657"}), (milwaukee:Junction {fra_node_id: "412167"}),
         p = shortestPath((chicago)-[:LINKS*]-(milwaukee))
     RETURN p
     
-    // From Chicago to Milwaukee on valid parts of the network
+    // From Chicago to Milwaukee Shortest Number of Relationships on valid parts of the network
     MATCH (chicago:Junction {fra_node_id: "414657"}), (milwaukee:Junction {fra_node_id: "412167"}),
         p = shortestPath((chicago)-[:LINKS*]-(milwaukee))
     WHERE NONE( x IN relationships(p) WHERE x.network = "X" )  
     RETURN p
     
-    // From Chicago to Milwaukee on valid parts of the network mileage
+    // From Chicago to Milwaukee Shortest Number of Relationships on valid parts of the network with mileage
     MATCH (chicago:Junction {fra_node_id: "414657"}), (milwaukee:Junction {fra_node_id: "412167"}),
         p = shortestPath((chicago)-[:LINKS*]-(milwaukee))
     WHERE NONE( x IN relationships(p) WHERE x.network = "X" )  
     RETURN p, reduce(totalMiles = 0, n IN relationships(p) | totalMiles + n.miles) AS miles 
     
-    // From Chicago to San Francisco
+    // From Chicago to San Francisco Shortest Number of Relationships on valid parts of the network with mileage
     MATCH (chicago:Junction {fra_node_id: "414657"}), (san_francisco:Junction {fra_node_id: "306128"}),
         p = shortestPath((chicago)-[:LINKS*]-(san_francisco))
     WHERE NONE( x IN relationships(p) WHERE x.network = "X" )  
     RETURN p, reduce(totalMiles = 0, n IN relationships(p) | totalMiles + n.miles) AS miles
-    
-    // TOP x From Chicago to Milwaukee on valid parts of the network mileage
+ 
+ 
+    // TOP 10 From Chicago to Milwaukee Lowest Mileage Path on valid parts of the network with mileage
+     MATCH (chicago:Junction {fra_node_id: "414657"}), (milwaukee:Junction {fra_node_id: "412167"})
+     CALL com.maxdemarzi.routes(chicago, milwaukee, 10)
+     YIELD path, weight
+     RETURN path, weight
+        
+    // TOP 10 From Chicago to San Francisco Lowest Mileage Path on valid parts of the network with mileage
     MATCH (chicago:Junction {fra_node_id: "414657"}), (san_francisco:Junction {fra_node_id: "306128"})
-    CALL algo.shortestPath.stream(chicago, san_francisco, 'miles', 
-        {relationshipQuery:'LINKS', defaultValue:1.0, direction:'BOTH'})
-    YIELD nodeId, cost
+    CALL com.maxdemarzi.routes(chicago, san_francisco, 10)
+    YIELD path, weight
+    RETURN path, weight
+
+    // TOP 10 From Chicago to San Francisco Lowest Mileage Path on valid parts of the network with path length and mileage
+    MATCH (chicago:Junction {fra_node_id: "414657"}), (san_francisco:Junction {fra_node_id: "306128"})
+    CALL com.maxdemarzi.routes(chicago, san_francisco, 10)
+    YIELD path, weight
+    RETURN length(path), weight
     
-    relationshipQuery:'MATCH(n:Loc)-[r:ROAD]->(m:Loc) RETURN id(n) as source, id(m) as target, r.cost as weight',
-    graph:'cypher'
